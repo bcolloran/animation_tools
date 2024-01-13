@@ -3,7 +3,6 @@
 use std::f32::consts::PI;
 use std::time::Duration;
 
-use bevy::asset::ChangeWatcher;
 use bevy::pbr::CascadeShadowConfigBuilder;
 use bevy::prelude::*;
 use bevy::render::camera::ScalingMode;
@@ -55,10 +54,7 @@ impl AnimationsMetadata {
 
 fn main() {
     App::new()
-        .add_plugins((DefaultPlugins.set(AssetPlugin {
-            watch_for_changes: ChangeWatcher::with_delay(std::time::Duration::from_millis(100)),
-            ..default()
-        }),))
+        .add_plugins((DefaultPlugins.set(AssetPlugin { ..default() }),))
         .insert_resource(AmbientLight {
             color: Color::WHITE,
             brightness: 1.0,
@@ -246,12 +242,12 @@ fn keyboard_animation_control(
 
         if keyboard_input.just_pressed(KeyCode::Left) {
             let elapsed = player.elapsed();
-            player.set_elapsed(elapsed - 0.1);
+            player.seek_to(elapsed - 0.1);
         }
 
         if keyboard_input.just_pressed(KeyCode::Right) {
             let elapsed = player.elapsed();
-            player.set_elapsed(elapsed + 0.1);
+            player.seek_to(elapsed + 0.1);
         }
 
         if keyboard_input.just_pressed(KeyCode::Return) {
