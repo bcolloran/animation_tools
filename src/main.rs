@@ -3,9 +3,12 @@
 use std::f32::consts::PI;
 use std::time::Duration;
 
+use bevy::color::palettes;
 use bevy::pbr::CascadeShadowConfigBuilder;
 use bevy::prelude::*;
 use bevy::render::camera::ScalingMode;
+use bevy::scene::SceneInstanceReady;
+use bevy_inspector_egui::quick::WorldInspectorPlugin;
 
 #[derive(Default, Debug)]
 pub struct AnimationParams {
@@ -30,24 +33,24 @@ pub struct AnimationsMetadata(pub Vec<AnimationParams>);
 impl AnimationsMetadata {
     pub fn new() -> Self {
         AnimationsMetadata(vec![
-            AnimationParams::new("all_animations_6.glb#Animation0", "TPose"),
-            AnimationParams::new("all_animations_6.glb#Animation1", "ClimbDown"),
-            AnimationParams::new("all_animations_6.glb#Animation2", "CrouchWalk"),
-            AnimationParams::new("all_animations_6.glb#Animation3", "FallOpen"),
-            AnimationParams::new("all_animations_6.glb#Animation4", "FallDiagonal"),
-            AnimationParams::new("all_animations_6.glb#Animation5", "FallHeadDown"),
-            AnimationParams::new("all_animations_6.glb#Animation6", "RunSprint"),
-            AnimationParams::new("all_animations_6.glb#Animation7", "WallHang"),
-            AnimationParams::new("all_animations_6.glb#Animation8", "IdleStand"),
-            AnimationParams::new("all_animations_6.glb#Animation9", "DashPose"),
-            AnimationParams::new("all_animations_6.glb#Animation10", "RunFast"),
-            AnimationParams::new("all_animations_6.glb#Animation11", "RunJog"),
-            AnimationParams::new("all_animations_6.glb#Animation12", "Walk"),
-            AnimationParams::new("all_animations_6.glb#Animation13", "WalkStride"),
-            AnimationParams::new("all_animations_6.glb#Animation14", "JumpAscent"),
-            AnimationParams::new("all_animations_6.glb#Animation15", "LadderHandsWide"),
-            AnimationParams::new("all_animations_6.glb#Animation16", "LadderHandsMedium"),
-            AnimationParams::new("all_animations_6.glb#Animation17", "WallSlide"),
+            AnimationParams::new("all_animations_7.glb#Animation0", "TPose"),
+            AnimationParams::new("all_animations_7.glb#Animation1", "ClimbDown"),
+            AnimationParams::new("all_animations_7.glb#Animation2", "CrouchWalk"),
+            AnimationParams::new("all_animations_7.glb#Animation3", "FallOpen"),
+            AnimationParams::new("all_animations_7.glb#Animation4", "FallDiagonal"),
+            AnimationParams::new("all_animations_7.glb#Animation5", "FallHeadDown"),
+            AnimationParams::new("all_animations_7.glb#Animation6", "RunSprint"),
+            AnimationParams::new("all_animations_7.glb#Animation7", "WallHang"),
+            AnimationParams::new("all_animations_7.glb#Animation8", "IdleStand"),
+            AnimationParams::new("all_animations_7.glb#Animation9", "DashPose"),
+            AnimationParams::new("all_animations_7.glb#Animation10", "RunFast"),
+            AnimationParams::new("all_animations_7.glb#Animation11", "RunJog"),
+            AnimationParams::new("all_animations_7.glb#Animation12", "Walk"),
+            AnimationParams::new("all_animations_7.glb#Animation13", "WalkStride"),
+            AnimationParams::new("all_animations_7.glb#Animation14", "JumpAscent"),
+            AnimationParams::new("all_animations_7.glb#Animation15", "LadderHandsWide"),
+            AnimationParams::new("all_animations_7.glb#Animation16", "LadderHandsMedium"),
+            AnimationParams::new("all_animations_7.glb#Animation17", "WallSlide"),
         ])
     }
 }
@@ -55,22 +58,19 @@ impl AnimationsMetadata {
 fn main() {
     App::new()
         .add_plugins((DefaultPlugins.set(AssetPlugin { ..default() }),))
+        .add_plugins(WorldInspectorPlugin::default())
         .insert_resource(AmbientLight {
             color: Color::WHITE,
             brightness: 1.0,
         })
         .insert_resource(AnimationsMetadata::new())
-        // .add_systems(Startup, setup)
+        .init_resource::<GizmosConfig>()
+        .add_systems(Startup, setup)
+        .add_systems(Startup, load_model_and_animations)
+        .add_systems(Update, draw_gizmos.after(keyboard_animation_control))
         .add_systems(
             Update,
-            (
-                setup.run_if(
-                    resource_exists::<AnimationsMetadata>()
-                        .and_then(not(resource_exists::<AnimationsLoadedMarker>())),
-                ),
-                setup_scene_once_loaded.run_if(resource_exists::<Animations>()),
-                keyboard_animation_control.run_if(resource_exists::<Animations>()),
-            ),
+            keyboard_animation_control.run_if(resource_exists::<Animations>),
         )
         .run();
 }
@@ -78,60 +78,34 @@ fn main() {
 #[derive(Resource)]
 struct Animations(Vec<Handle<AnimationClip>>);
 
-#[derive(Resource)]
-struct AnimationsLoadedMarker;
-
-fn setup(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    animation_meta: Res<AnimationsMetadata>,
-) {
+fn setup(mut commands: Commands) {
     println!("--------- setup");
 
-    let anim_handles: Vec<Handle<AnimationClip>> = animation_meta
-        .0
-        .iter()
-        .map(|params| asset_server.load(&params.path))
-        .collect();
-    commands.insert_resource(Animations(anim_handles));
+    commands.spawn((
+        Camera3d::default(),
+        OrthographicProjection {
+            scale: 1.0,
+            scaling_mode: ScalingMode::FixedVertical {
+                viewport_height: 1.0,
+            },
+            ..OrthographicProjection::default_3d()
+        },
+        Transform::from_xyz(0.0, 0.0, 12.5).looking_at(Vec3::ZERO, Vec3::Y),
+    ));
 
-    commands.insert_resource(AnimationsLoadedMarker);
-
-    commands.spawn(Camera3dBundle {
-        projection: OrthographicProjection {
-            scale: 4.0,
-            scaling_mode: ScalingMode::FixedVertical(2.0),
-            ..default()
-        }
-        .into(),
-        transform: Transform::from_xyz(0.0, 0.0, 50.0).looking_at(Vec3::ZERO, Vec3::Y),
-        ..default()
-    });
-
-    commands.spawn(DirectionalLightBundle {
-        transform: Transform::from_rotation(Quat::from_euler(EulerRot::ZYX, 0.0, 1.0, -PI / 4.)),
-        directional_light: DirectionalLight {
+    commands.spawn((
+        Transform::from_rotation(Quat::from_euler(EulerRot::ZYX, 0.0, 1.0, -PI / 4.)),
+        DirectionalLight {
             shadows_enabled: true,
             ..default()
         },
-        cascade_shadow_config: CascadeShadowConfigBuilder {
+        CascadeShadowConfigBuilder {
             first_cascade_far_bound: 200.0,
             maximum_distance: 400.0,
             ..default()
         }
-        .into(),
-        ..default()
-    });
-
-    // Fox
-    let mut trans = Transform::default();
-    trans.rotate_axis(Vec3::Y, 3.14159 * 0.5);
-    commands.spawn(SceneBundle {
-        // scene: asset_server.load("mixamo_character_1.glb#Scene0"),
-        scene: asset_server.load("mixamo_character_2.glb#Scene0"),
-        transform: trans,
-        ..default()
-    });
+        .build(),
+    ));
 
     println!("Animation controls:");
     println!("  - spacebar: play / pause");
@@ -140,73 +114,131 @@ fn setup(
     println!("  - return: change animation");
 }
 
+fn load_model_and_animations(
+    mut commands: Commands,
+    animation_meta: Res<AnimationsMetadata>,
+    asset_server: Res<AssetServer>,
+) {
+    let anim_handles: Vec<Handle<AnimationClip>> = animation_meta
+        .0
+        .iter()
+        .map(|params| asset_server.load(&params.path))
+        .collect();
+    commands.insert_resource(Animations(anim_handles));
+
+    // Fox
+    commands
+        .spawn((
+            SceneRoot(asset_server.load("mixamo_character_2.glb#Scene0")),
+            Transform::from_rotation(Quat::from_axis_angle(Vec3::Y, std::f32::consts::FRAC_PI_2)),
+        ))
+        .observe(setup_scene_once_loaded);
+}
+
 // Once the scene is loaded, start the animation
 fn setup_scene_once_loaded(
+    trigger: Trigger<SceneInstanceReady>,
+    mut commands: Commands,
+    children: Query<&Children>,
+    mut animation_players: Query<(Entity, &mut AnimationPlayer)>,
     animations: Res<Animations>,
-    mut players: Query<&mut AnimationPlayer, Added<AnimationPlayer>>,
+    mut animation_graphs: ResMut<Assets<AnimationGraph>>,
 ) {
-    for mut player in &mut players {
-        player.play(animations.0[0].clone_weak()).repeat();
+    let Ok(children) = children
+        .get(trigger.entity())
+        .and_then(|child| children.get(child[0]))
+    else {
+        unreachable!()
+    };
+
+    let animation_graph = AnimationGraph::from_clips(animations.0.iter().cloned());
+    let handle = animation_graphs.add(animation_graph.0);
+
+    for child in children {
+        if let Ok((player, mut ani_player)) = animation_players.get_mut(*child) {
+            bevy::log::warn!("Adding AnimationTransitions and AnimationGraph");
+            let mut transitions = AnimationTransitions::new();
+            transitions.play(&mut ani_player, animation_graph.1[0], Duration::default());
+
+            commands
+                .entity(player)
+                .insert((AnimationGraphHandle(handle.clone()), transitions));
+        }
     }
 }
 
-fn keyboard_animation_control(
-    keyboard_input: Res<Input<KeyCode>>,
-    mut animation_players: Query<&mut AnimationPlayer>,
-    animations: Res<Animations>,
-    animation_meta: Res<AnimationsMetadata>,
+#[derive(Debug, Default, Resource)]
+struct GizmosConfig {
+    y: bool,
+    vel: f32,
+}
 
-    mut gizmos: Gizmos,
-    time: Res<Time>,
-    //locals
-    mut current_animation: Local<usize>,
-    mut vel: Local<f32>,
-    mut gizmos_y: Local<bool>,
-    mut use_params: Local<bool>,
-) {
+fn draw_gizmos(mut gizmos: Gizmos, gizmos_config: Res<GizmosConfig>, time: Res<Time>) {
     gizmos.rect(
-        Vec3::Y * (1.7 / 2.0) + Vec3::Z * time.elapsed_seconds().sin(),
-        Quat::from_rotation_y(0.0),
+        Isometry3d::new(
+            Vec3::Y * (1.7 / 2.0) + Vec3::Z * time.elapsed_secs().sin(),
+            Quat::from_rotation_y(0.0),
+        ),
         Vec2::new(0.6, 1.7),
-        Color::GREEN,
+        palettes::basic::GREEN,
     );
+
     let num_lines = 30;
     for i in 0..num_lines {
-        let t = time.elapsed_seconds();
-        let mut x = -t * *vel + i as f32;
+        let t = time.elapsed_secs();
+        let mut x = -t * gizmos_config.vel + i as f32;
 
         x = x % num_lines as f32 - (num_lines as f32 / 2.0) * x.signum();
 
-        let (v, end) = if *gizmos_y {
+        let (v, end) = if gizmos_config.y {
             (Vec3::Y * x, Vec3::X)
         } else {
             (Vec3::X * x, Vec3::NEG_Y)
         };
 
-        gizmos.ray(v, end, Color::BISQUE)
+        gizmos.ray(v, end, palettes::css::BISQUE)
+    }
+}
+
+fn keyboard_animation_control(
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut animation_players: Query<(&mut AnimationPlayer, &mut AnimationTransitions)>,
+    animations: Res<Animations>,
+    animation_meta: Res<AnimationsMetadata>,
+    mut gizmos_config: ResMut<GizmosConfig>,
+    //locals
+    mut current_animation: Local<usize>,
+    mut use_params: Local<bool>,
+) {
+    if keyboard_input.just_pressed(KeyCode::Backspace) {
+        gizmos_config.y = !gizmos_config.y;
     }
 
-    if keyboard_input.just_pressed(KeyCode::Back) {
-        *gizmos_y = !*gizmos_y;
-    }
-
-    for mut player in &mut animation_players {
+    for (mut player, mut transitions) in &mut animation_players {
         if keyboard_input.just_pressed(KeyCode::Space) {
-            if player.is_paused() {
-                player.resume();
+            if player.all_paused() {
+                player.resume_all();
             } else {
-                player.pause();
+                player.pause_all();
             }
         }
 
-        if keyboard_input.just_pressed(KeyCode::Up) {
-            *vel += 0.1;
-            println!("playback speed: {},   vel: {}", player.speed(), *vel);
+        if keyboard_input.just_pressed(KeyCode::ArrowUp) {
+            gizmos_config.vel += 0.1;
+            println!(
+                "playback speed: {},   vel: {}",
+                player.playing_animations().next().unwrap().1.speed(),
+                gizmos_config.vel
+            );
         }
 
-        if keyboard_input.just_pressed(KeyCode::Down) {
-            *vel -= 0.1;
-            println!("playback speed: {},   vel: {}", player.speed(), *vel);
+        if keyboard_input.just_pressed(KeyCode::ArrowDown) {
+            gizmos_config.vel -= 0.1;
+            println!(
+                "playback speed: {},   vel: {}",
+                player.playing_animations().next().unwrap().1.speed(),
+                gizmos_config.vel
+            );
         }
 
         if keyboard_input.just_pressed(KeyCode::ControlLeft) {
@@ -216,18 +248,26 @@ fn keyboard_animation_control(
         if *use_params {
             let anim_params = &animation_meta.0[*current_animation];
             let speed = anim_params.playback_speed;
-            player.set_speed(speed);
+            player.adjust_speeds(speed);
         } else {
-            if keyboard_input.just_pressed(KeyCode::A) {
-                let speed = player.speed();
-                player.set_speed(speed + 0.1);
-                println!("playback speed: {},   vel: {}", player.speed(), *vel);
+            if keyboard_input.just_pressed(KeyCode::KeyA) {
+                let speed = player.playing_animations().next().unwrap().1.speed();
+                player.adjust_speeds(speed + 0.1);
+                println!(
+                    "playback speed: {},   vel: {}",
+                    player.playing_animations().next().unwrap().1.speed(),
+                    gizmos_config.vel
+                );
             }
 
-            if keyboard_input.just_pressed(KeyCode::Z) {
-                let speed = player.speed();
-                player.set_speed(speed - 0.1);
-                println!("playback speed: {},   vel: {}", player.speed(), *vel);
+            if keyboard_input.just_pressed(KeyCode::KeyZ) {
+                let speed = player.playing_animations().next().unwrap().1.speed();
+                player.adjust_speeds(speed - 0.1);
+                println!(
+                    "playback speed: {},   vel: {}",
+                    player.playing_animations().next().unwrap().1.speed(),
+                    gizmos_config.vel
+                );
             }
         }
 
@@ -235,26 +275,31 @@ fn keyboard_animation_control(
             println!(
                 "TOGGLED PARAMS {} playback speed: {},   vel: {}",
                 *use_params,
-                player.speed(),
-                *vel
+                player.playing_animations().next().unwrap().1.speed(),
+                gizmos_config.vel
             );
         }
 
-        if keyboard_input.just_pressed(KeyCode::Left) {
-            let elapsed = player.elapsed();
-            player.seek_to(elapsed - 0.1);
+        if keyboard_input.just_pressed(KeyCode::ArrowLeft) {
+            for (_, playing) in player.playing_animations_mut() {
+                let elapsed = playing.elapsed();
+                playing.seek_to(elapsed - 0.1);
+            }
         }
 
-        if keyboard_input.just_pressed(KeyCode::Right) {
-            let elapsed = player.elapsed();
-            player.seek_to(elapsed + 0.1);
+        if keyboard_input.just_pressed(KeyCode::AltRight) {
+            for (_, playing) in player.playing_animations_mut() {
+                let elapsed = playing.elapsed();
+                playing.seek_to(elapsed + 0.1);
+            }
         }
 
-        if keyboard_input.just_pressed(KeyCode::Return) {
+        if keyboard_input.just_pressed(KeyCode::Enter) {
             *current_animation = (*current_animation + 1) % animations.0.len();
-            player
-                .play_with_transition(
-                    animations.0[*current_animation].clone_weak(),
+            transitions
+                .play(
+                    &mut player,
+                    (*current_animation as u32).into(),
                     Duration::from_millis(250),
                 )
                 .repeat();
